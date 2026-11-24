@@ -65,11 +65,18 @@ const T = {
   },
 } as const;
 
-/** Turns "[1]" citations into links to the matching source. */
-function AnswerText({ text, sources }: { text: string; sources: { n: number; url: string }[] }) {
+/** "rtl" when the text is mostly Arabic, so mixed Arabic/English lines keep the right word order. */
+function textDir(text: string): "rtl" | "ltr" {
+  const arabic = (text.match(/[\u0600-\u06FF]/g) ?? []).length;
+  const latin = (text.match(/[A-Za-z]/g) ?? []).length;
+  return arabic > latin ? "rtl" : "ltr";
+}
+
+/** Renders one line, turning "[1]" citations into links to the matching source. */
+function Line({ text, sources }: { text: string; sources: { n: number; url: string }[] }) {
   const parts = text.split(/(\[\d+\])/g);
   return (
-    <p className="answer-text">
+    <>
       {parts.map((part, i) => {
         const m = part.match(/^\[(\d+)\]$/);
         const src = m ? sources.find((s) => s.n === Number(m[1])) : undefined;
@@ -81,7 +88,25 @@ function AnswerText({ text, sources }: { text: string; sources: { n: number; url
           <span key={i}>{part}</span>
         );
       })}
-    </p>
+    </>
+  );
+}
+
+/** Each line gets its own direction, so an Arabic line that starts with "1." or an English
+ *  word still flows right-to-left, and English lines stay left-to-right. */
+function AnswerText({ text, sources }: { text: string; sources: { n: number; url: string }[] }) {
+  return (
+    <div className="answer-text">
+      {text.split("\n").map((line, i) =>
+        line.trim() === "" ? (
+          <div key={i} className="answer-gap" />
+        ) : (
+          <p key={i} dir={textDir(line)} className="answer-line">
+            <Line text={line} sources={sources} />
+          </p>
+        ),
+      )}
+    </div>
   );
 }
 
@@ -195,7 +220,7 @@ export default function Home() {
 
         <div ref={resultRef} tabIndex={-1} aria-live="polite" className="result-wrap">
           {result?.type === "emergency" && (
-            <div className="card card-emergency">
+            <div className="card card-emergency" dir={textDir(result.message)}>
               <p className="big">{result.message}</p>
               <a href="tel:911" className="call-btn danger">
                 {t.call911}
@@ -204,7 +229,7 @@ export default function Home() {
           )}
 
           {result?.type === "crisis" && (
-            <div className="card card-crisis">
+            <div className="card card-crisis" dir={textDir(result.message)}>
               <p className="big">{result.message}</p>
               <div className="btn-row">
                 <a href="tel:988" className="call-btn">
@@ -218,7 +243,7 @@ export default function Home() {
           )}
 
           {result?.type === "answer" && (
-            <div className="card">
+            <div className="card" dir={textDir(result.answer)}>
               {result.note && (
                 <div className="note">
                   <p>{result.note.message}</p>
@@ -246,7 +271,9 @@ export default function Home() {
             </div>
           )}
 
-          {result?.type === "error" && <div className="card card-error">{result.message}</div>}
+          {result?.type === "error" && <div className="card card-error" dir={textDir(result.message)}>
+              {result.message}
+            </div>}
         </div>
 
         <footer className="footer">{t.footer}</footer>

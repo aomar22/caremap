@@ -13,7 +13,7 @@ export const config = {
   /** Max characters in one question. */
   maxQuestionChars: num("MAX_QUESTION_CHARS", 500),
   /** Max tokens the model may generate per answer. */
-  maxTokens: num("MAX_OUTPUT_TOKENS", 600),
+  maxTokens: num("MAX_OUTPUT_TOKENS", 1000),
   /** Cheap, fast model by default. */
   model: process.env.ANTHROPIC_MODEL || "claude-haiku-5-5",
 };

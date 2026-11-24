@@ -34,12 +34,26 @@ export const askClaude: AskModel = async (system, user) => {
     console.error(`[CareMap] Model API error ${res.status}: ${detail.slice(0, 300)}`);
     throw new Error(`Model API error: ${res.status}`);
   }
-  const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
+  const data = (await res.json()) as {
+    content?: Array<{ type: string; text?: string }>;
+    stop_reason?: string;
+    usage?: { output_tokens?: number };
+  };
   const text = (data.content ?? [])
     .filter((b) => b.type === "text" && b.text)
     .map((b) => b.text)
     .join("\n")
     .trim();
-  if (!text) throw new Error("Empty model response");
+  if (!text) {
+    const types = (data.content ?? []).map((b) => b.type).join(",") || "none";
+    console.error(
+      `[CareMap] Empty model response: stop_reason=${data.stop_reason}, blocks=${types}, ` +
+        `output_tokens=${data.usage?.output_tokens}, max_tokens=${config.maxTokens}`,
+    );
+    throw new Error("Empty model response");
+  }
+  if (data.stop_reason === "max_tokens") {
+    console.warn(`[CareMap] Answer hit max_tokens (${config.maxTokens}); consider raising MAX_OUTPUT_TOKENS.`);
+  }
   return text;
 };

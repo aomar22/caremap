@@ -72,21 +72,31 @@ function textDir(text: string): "rtl" | "ltr" {
   return arabic > latin ? "rtl" : "ltr";
 }
 
-/** Renders one line, turning "[1]" citations into links to the matching source. */
+// Phone numbers like 1-800-268-1154 or 416-314-5518.
+const PHONE = /(?:\+?1[-.\s])?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}/;
+
+/** Renders one line: "[1]" citations become source links, and phone numbers become
+ *  tap-to-call links that always read left-to-right, even inside Arabic text. */
 function Line({ text, sources }: { text: string; sources: { n: number; url: string }[] }) {
-  const parts = text.split(/(\[\d+\])/g);
+  const parts = text.split(new RegExp(`(\\[\\d+\\]|${PHONE.source})`, "g")).filter(Boolean);
   return (
     <>
       {parts.map((part, i) => {
         const m = part.match(/^\[(\d+)\]$/);
         const src = m ? sources.find((s) => s.n === Number(m[1])) : undefined;
-        return src ? (
-          <a key={i} href={src.url} target="_blank" rel="noopener noreferrer" className="cite">
-            {part}
-          </a>
-        ) : (
-          <span key={i}>{part}</span>
-        );
+        if (src)
+          return (
+            <a key={i} href={src.url} target="_blank" rel="noopener noreferrer" className="cite">
+              {part}
+            </a>
+          );
+        if (new RegExp(`^${PHONE.source}$`).test(part))
+          return (
+            <a key={i} href={`tel:${part.replace(/[^\d+]/g, "")}`} dir="ltr" className="phone">
+              {part}
+            </a>
+          );
+        return <span key={i}>{part}</span>;
       })}
     </>
   );

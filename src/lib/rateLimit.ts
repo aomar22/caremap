@@ -45,7 +45,10 @@ export class UpstashStore implements CounterStore {
       ]),
       cache: "no-store",
     });
-    if (!res.ok) throw new Error(`Rate limit store error: ${res.status}`);
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      throw new Error(`Upstash ${res.status}: ${detail.slice(0, 200)}`);
+    }
     const data = (await res.json()) as Array<{ result?: number; error?: string }>;
     const value = data[0]?.result;
     if (typeof value !== "number") throw new Error("Rate limit store returned no count");
@@ -58,11 +61,16 @@ let defaultStore: CounterStore | null | undefined;
 /** Returns the store to use, or null if limits can't be enforced safely. */
 export function getStore(): CounterStore | null {
   if (defaultStore !== undefined) return defaultStore;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  // Tolerate values pasted with quotes or spaces (e.g. copied from a .env snippet).
+  const clean = (v?: string) => v?.trim().replace(/^["']|["']$/g, "").replace(/\/+$/, "");
+  const url = clean(process.env.UPSTASH_REDIS_REST_URL);
+  const token = clean(process.env.UPSTASH_REDIS_REST_TOKEN);
   if (url && token) defaultStore = new UpstashStore(url, token);
   else if (process.env.NODE_ENV !== "production") defaultStore = new MemoryStore();
-  else defaultStore = null;
+  else {
+    console.error("[CareMap] UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are missing: refusing model calls.");
+    defaultStore = null;
+  }
   return defaultStore;
 }
 
@@ -91,7 +99,8 @@ export async function checkLimits(ip: string, store = getStore()): Promise<Limit
     const all = await store.incr(`rl:global:${day}`, DAY);
     if (all > config.globalDaily) return { ok: false, reason: "global" };
     return { ok: true, remaining: config.perIpDaily - mine };
-  } catch {
+  } catch (err) {
+    console.error("[CareMap] Rate limit store error:", err instanceof Error ? err.message : err);
     // If we can't count, we don't spend.
     return { ok: false, reason: "unavailable" };
   }

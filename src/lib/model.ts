@@ -1,0 +1,45 @@
+// Calls the Anthropic Messages API with plain fetch (no SDK dependency).
+
+import { config } from "./config.ts";
+
+export type AskModel = (system: string, user: string) => Promise<string>;
+
+export const askClaude: AskModel = async (system, user) => {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    console.error("[CareMap] ANTHROPIC_API_KEY is not set. Add it to .env.local and restart `npm run dev`.");
+    throw new Error("ANTHROPIC_API_KEY is not set");
+  }
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: config.model,
+      max_tokens: config.maxTokens,
+      system,
+      messages: [{ role: "user", content: user }],
+    }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(25_000),
+  });
+
+  if (!res.ok) {
+    // Log the API's error (never the user's question) so problems are visible in the server terminal.
+    const detail = await res.text().catch(() => "");
+    console.error(`[CareMap] Model API error ${res.status}: ${detail.slice(0, 300)}`);
+    throw new Error(`Model API error: ${res.status}`);
+  }
+  const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
+  const text = (data.content ?? [])
+    .filter((b) => b.type === "text" && b.text)
+    .map((b) => b.text)
+    .join("\n")
+    .trim();
+  if (!text) throw new Error("Empty model response");
+  return text;
+};
